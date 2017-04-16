@@ -26,25 +26,21 @@ program spike_lu
 
 !!!!!!! variable declaration
   implicit none
-  integer :: i,j,N,it,itmax,k,Nx,Ny,e,nnz
+  integer :: i,j,N,k,Nx,Ny,e,nnz
   integer :: t1,t2,tim
-  double precision :: hx,hy,L,alpha,beta,pi,normr,normb,nres,err
+  double precision :: L,nres,err
   double precision,dimension(:),allocatable :: sa,b,r,dummy,x
   integer,dimension(:),allocatable :: isa,jsa
   character(len=100) :: name
   character(len=1) :: proc, uplo
   !! for banded solver
-  double precision,dimension(:,:),allocatable :: ba, DL
+  !blk_diag - block diagonal matrix "D" after factorization in preconditioning phase
+  double precision,dimension(:,:),allocatable :: ba, blk_diag
   double precision :: nzero,norm
   integer :: kl,ku,info
   !!for pardiso
-  integer(8),dimension(64) :: pt
-  integer,dimension(64) :: iparm
-  integer :: mtype
-  integer :: MAXFCT,MNUM,PHASE,MSGLVL
-  integer :: idum
-  double precision,dimension(:),allocatable :: usa,d,a
-  integer,dimension(:),allocatable :: uisa,ujsa,ia,ja
+  double precision,dimension(:),allocatable :: a
+  integer,dimension(:),allocatable :: ia,ja
   character(len=1) :: cc
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -106,10 +102,6 @@ program spike_lu
 
 
   allocate(r(1:N)) !! residual array
-
-  itmax=2500 ! iteration maximal allowed
-  err=1d-14 !convergence criteria
-
 
   allocate(dummy(1:N))!! dummy array if additional storage is needed
 
@@ -178,16 +170,6 @@ program spike_lu
   call system_clock(t2,tim) ! final time
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  print *,''
-  if (it>=itmax) then
-     print *,'**Attention** did not converge to', err, 'after', itmax,'iterations'
-  else
-     if (it/=0) then 
-        print *,'Success- converge below', err, 'in', it,'iterations'
-     else
-        print *,'Direct solver- residual', nres
-     endif
-  end if
 
   print *,'Total time',(t2-t1)*1.0d0/tim
 
