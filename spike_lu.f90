@@ -29,8 +29,8 @@ program spike_lu
   integer :: i,j,N,k,Nx,Ny,e,nnz,rS,cS, Nj,M
   integer :: t1,t2,tim
   double precision :: L,nres,err
-  double precision,dimension(:),allocatable :: sa,b,r,dummy,x
-  integer,dimension(:),allocatable :: isa,jsa
+  double precision,dimension(:),allocatable :: sa,b,r,dummy,ref_x,x,G,Gj
+  integer,dimension(:),allocatable :: isa,jsa,ipiv
   character(len=100) :: name
   character(len=1) :: proc, uplo
   integer :: P
@@ -99,8 +99,8 @@ program spike_lu
   allocate(b(1:N))! ! Right hand-side
   b=1.0d0
 
-  allocate(x(1:N)) !! solution
-  x=0.0d0 ! initial starting vector
+  allocate(ref_x(1:N)) !! solution
+  ref_x=0.0d0 ! initial starting vector
 
 
   allocate(r(1:N)) !! residual array
@@ -151,14 +151,14 @@ program spike_lu
      !print *, "Reference Solution - The LU banded matrix is:", ba
      print *,'info',info
      ! LU solve (2 steps)
-     x=b
-     call DTBSM('L','N','U',N,1,kl,bA(ku+1,1),kl+ku+1,x,N)
-     call DTBSM('U','N','N',N,1,ku,bA,kl+ku+1,x,N)
-
+     ref_x=b
+     call DTBSM('L','N','U',N,1,kl,bA(ku+1,1),kl+ku+1,ref_x,N)
+     call DTBSM('U','N','N',N,1,ku,bA,kl+ku+1,ref_x,N)
+     print *, "Reference Solution is:", ref_x
 
      ! compute residual
      r=b
-     call dcsrmm(uplo,N,N,1,-1.0d0,sa,isa,jsa,x,1.0d0,r)
+     call dcsrmm(uplo,N,N,1,-1.0d0,sa,isa,jsa,ref_x,1.0d0,r)
      nres=sum(abs(r))/sum(abs(b)) ! norm relative residual 
 
 
@@ -193,7 +193,7 @@ program spike_lu
        enddo
      end if
    enddo
-   print *, "A matrix is:",A_mat
+   !print *, "A matrix is:",A_mat
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!! Pre-processing stage:: partitioning phase!!
@@ -239,7 +239,7 @@ do i=1, (kl+ku+1)
 enddo
 
 !print *, "Banded Diagonal matrix is:", temp_banded_diag
-print *, "Block Diagonal matrix is:", blk_diag
+!print *, "Block Diagonal matrix is:", blk_diag
 
 !!Extracting Spike Matrix 
 
@@ -343,7 +343,58 @@ print *, "Block Diagonal matrix is:", blk_diag
    spk_mat(i,i) = 1.0d0
  enddo
 
- print *, "Spike Matrix is:", spk_mat
+ !print *, "Spike Matrix is:", spk_mat
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!! Post-Processing stage:: D * G = F        !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! This serialy solving of G needs to be parallelized later
+
+!Note: Aj is used here instead of "D" Diagonal block matrix assuming 
+!DGBALU refers to only the diagonal block
+
+ allocate(G(N))
+ G = 0.0d0
+ allocate(Gj(Nj))
+ Gj = 0.0d0
+ do k=1,P
+   Aj = ba(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj))
+   
+   nzero=0.0d0
+   norm=0.0d0
+   call DGBALU(Nj,kl,ku,Aj,kl+ku+1,nzero,norm,info)
+   print *,'info',info
+   
+   !LU SOlve
+   Gj = b(1+(k-1)*Nj:k*Nj)
+   call DTBSM('L','N','U',Nj,1,kl,Aj(ku+1,1),kl+ku+1,Gj,Nj)
+   call DTBSM('U','N','N',Nj,1,ku,Aj,kl+ku+1,Gj,Nj)
+   G(1+(k-1)*Nj:k*Nj) = Gj
+
+  !print *, "Gj is", Gj
+ enddo
+ !print *, "Final G is", G
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!! Post-Processing stage:: S * X = G        !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! This is just for reference; later this needs to be replaced with solution for
+!! reduced form of S, X and G
+
+  allocate(x(1:N)) !! solution
+  x=0.0d0 ! initial starting vector
+  allocate(ipiv(N))
+  !print *, "spike matrix is", spk_mat
+  call DGETRF(N,N,spk_mat,N,ipiv,info)
+  x=G
+  print *, "G is", G
+
+  call DGETRS('N', N, 1, spk_mat, N, ipiv, x, N, info)
+  print *,'info',info
+
+  print *, "Final Solution is:",x
+
 end program spike_lu
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
