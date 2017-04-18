@@ -160,6 +160,7 @@ program spike_lu
      r=b
      call dcsrmm(uplo,N,N,1,-1.0d0,sa,isa,jsa,ref_x,1.0d0,r)
      nres=sum(abs(r))/sum(abs(b)) ! norm relative residual 
+     print *, "Residual from nres is", nres
 
 
   call system_clock(t2,tim) ! final time
@@ -388,12 +389,18 @@ enddo
   !print *, "spike matrix is", spk_mat
   call DGETRF(N,N,spk_mat,N,ipiv,info)
   x=G
-  print *, "G is", G
+  !print *, "G is", G
 
   call DGETRS('N', N, 1, spk_mat, N, ipiv, x, N, info)
   print *,'info',info
 
   print *, "Final Solution is:",x
+
+  r=b
+  call DGEMM('N', 'N', N, 1, N, 1.0d0, A_mat, N, x, N, -1.0d0, r, N)
+  print *, "Residual from maxval is", maxval(abs(r))/maxval(abs(b))
+  nres=sum(abs(r))/sum(abs(b)) ! norm relative residual 
+  print *, "Residual from nres is", nres
 
 end program spike_lu
 
