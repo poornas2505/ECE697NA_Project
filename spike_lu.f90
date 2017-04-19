@@ -26,17 +26,17 @@ program spike_lu
 
 !!!!!!! variable declaration
   implicit none
-  integer :: i,j,N,k,Nx,Ny,e,nnz,rS,cS, Nj,M
+  integer :: i,j,N,k,Nx,Ny,e,nnz,rS,cS, Nj,M, s_cap_size
   integer :: t1,t2,tim
   double precision :: L,nres,err
-  double precision,dimension(:),allocatable :: sa,b,r,dummy,ref_x,x,G,Gj
+  double precision,dimension(:),allocatable :: sa,b,r,dummy,ref_x,x,G,Gj, g_cap,x_cap
   integer,dimension(:),allocatable :: isa,jsa,ipiv
   character(len=100) :: name
   character(len=1) :: proc, uplo
   integer :: P
   !! for banded solver
   !blk_diag - block diagonal matrix "D" after factorization in preconditioning phase
-  double precision,dimension(:,:),allocatable :: ba, A_mat, temp_banded_diag, blk_diag,Aj,spk_Bj, spk_Cj, Vj, Wj, spk_mat
+  double precision,dimension(:,:),allocatable :: ba, ba_lu, A_mat, temp_banded_diag, blk_diag,Aj,spk_Bj, spk_Cj, Vj, Wj, spk_mat, spk_cap_mat
   double precision :: nzero,norm
   integer :: kl,ku,info
   !!for pardiso
@@ -212,70 +212,14 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 !!Extracting Block Diagonal Matrix
-allocate(blk_diag(N,N))
-blk_diag = 0.0d0
-allocate(temp_banded_diag(1:kl+ku+1,1:N))
-temp_banded_diag = ba;
-do i = 1,P
-  do j = 1,ku
-    temp_banded_diag(j,1+((i-1)*N/P):(ku+1-j)+((i-1)*N/P)) = 0.0d0
-  enddo
-  do j = 1,kl
-    !temp_banded_diag(kl+ku+1+1-j,1+((i-1)*N/P):(kl+1-j)+((i-1)*N/P)) = 0.0d0
-    temp_banded_diag(ku+1+j,((N/P)*i)+1-j:(N/P)*i) = 0.0d0
-  enddo
-enddo
+!! No need to explicitly extract Diagonal Elements
+!! It will be part of Matrix ba_lu - which is computed below; each Aj in it is in LU format
 
-do i=1, (kl+ku+1)
-  if(i<=(ku+1)) then
-    do j=(ku+2-i), N
-      blk_diag(j-ku+i-1,j) = temp_banded_diag(i,j)
-    enddo
-  end if
-  if(i>(ku+1)) then
-    do j=1,N-(i-ku-1)
-      blk_diag(j-ku+i-1,j) = temp_banded_diag(i,j)
-    enddo
-  end if
-enddo
-
-!print *, "Banded Diagonal matrix is:", temp_banded_diag
-!print *, "Block Diagonal matrix is:", blk_diag
-
-!!Extracting Spike Matrix 
-
- !nzero=0.0d0
- !norm=0.0d0
- !allocate(Aj(kl+ku+1,N/P))
- !Aj = ba(1:kl+ku+1,1:N/P)
- !print *, "kl ku 1", kl+ku+1
- !rS = 1
- !cS = 3
- !
- !allocate(spk_Bj(N/P,M))
- !do i = 1,N/P
- !  do j = 1,M
- !    spk_Bj(i,j) = A_mat(rS-1+i, cS-1+j)
- !  enddo
- !enddo
- !print *, "Hi 1"
- !print *, "Aj before LU:", Aj
- !call DGBALU(Nj,kl,ku,Aj,kl+ku+1,nzero,norm,info)
- !print *, "LU Matrix is:", Aj
- !print *, "Hi 2"
- !print *,'info',info
- !
- !! LU solve (2 steps)
- !allocate(Vj(Nj,M))
- !Vj=spk_Bj
- !print *, "Hi 3"
- !!!What do we consider for unit and non unit diagonal case
- !call DTBSM('L','N','U',Nj,M,kl,Aj(ku+1,1),kl+ku+1,Vj,Nj)
- !print *, "Hi 4"
- !call DTBSM('U','N','N',Nj,M,ku,Aj,kl+ku+1,Vj,Nj)
- !
- !print *, "Vj matrix is:", Vj
-
+!!Generating Reduced Spike Matrix
+! No need to generate Spike Matrix S as it is not needed
+ 
+ s_cap_size = 2*(P-1)*M;
+ 
  nzero=0.0d0
  norm=0.0d0
  allocate(Aj(kl+ku+1,Nj))
@@ -284,67 +228,66 @@ enddo
  allocate(Vj(Nj,M))
  allocate(Wj(Nj,M))
  allocate(spk_mat(N,N))
+ allocate(spk_cap_mat(s_cap_size, s_cap_size))
+ allocate(ba_lu(1:kl+ku+1,1:N))
+ 
  spk_mat = 0.0d0
+ spk_cap_mat = 0.0d0
+ ba_lu = 0.0d0
+ spk_Bj = 0.0d0
 
- do k=1,P-1
+ do k=1, P
+ !!LU Factorization of A
    Aj = ba(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj))
-   
-   do i = 1,Nj
-     do j = 1,M
-       spk_Bj(i,j) = A_mat(Nj*(k-1)+i, (Nj*k)+j)
-     enddo
-   enddo
-
    nzero=0.0d0
    norm=0.0d0
    call DGBALU(Nj,kl,ku,Aj,kl+ku+1,nzero,norm,info)
    print *,'info',info
-   
-   !LU SOlve
-   Vj=spk_Bj
-   call DTBSM('L','N','U',Nj,M,kl,Aj(ku+1,1),kl+ku+1,Vj,Nj)
-   call DTBSM('U','N','N',Nj,M,ku,Aj,kl+ku+1,Vj,Nj)
+   ba_lu(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj)) = Aj
 
-   do i = 1,Nj
-     do j = 1,M
-       spk_mat(Nj*(k-1)+i, (Nj*k)+j) = Vj(i,j)
-     enddo
-   enddo
+   !!Fetching Bj from next partition
+   if(k<P) then
+     call DLACPY('L', ku, ku, ba(1:kl+ku+1,(1+(k)*Nj):((k+1)*Nj)), kl+ku, spk_Bj(Nj-M+1: Nj, 1:M), ku) !! When in doubt, check this :p
+     !print *, "Spk Bj is", spk_Bj
 
+     !LU SOlve
+     Vj=spk_Bj !TODO: Can replace Vj with Spk_Bj
+     call DTBSM('L','N','U',Nj,M,kl,Aj(ku+1,1),kl+ku+1,Vj,Nj)
+     call DTBSM('U','N','N',Nj,M,ku,Aj,kl+ku+1,Vj,Nj)
+
+     !Storing Vj bottom in reduced spike matrix
+     spk_cap_mat(1+(k-1)*2*M : 1+(k-1)*2*M+(M-1), (2*k*M)-(M-1) : 2*k*M) = Vj(Nj-M+1:Nj, 1:M)
+     !Storing Vj top in reduced spike matrix
+     if(k>1) then
+       spk_cap_mat((2*k-3)*M+1 : (2*k-2)*M, (2*k*M)-(M-1) : 2*k*M) = Vj(1:M, 1:M)
+     end if
+   end if
+
+   !!Fetching Cj from previous partition
+   if(k>1) then
+     Aj = ba_lu(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj)) !Current partitiion Aj
+     !print *, "Aj is", Aj
+     call DLACPY('U', kl, kl+ku, ba(1:kl+ku+1,(1+(k-2)*Nj):((k-1)*Nj)), kl+ku, spk_Cj(1:M, 1:M), kl) !! When in doubt, check this :p
+     !print *, "Spk Bj is", spk_Bj
+
+     !LU SOlve
+     Wj=spk_Cj !TODO: Can replace Wj with Spk_Cj
+     call DTBSM('L','N','U',Nj,M,kl,Aj(ku+1,1),kl+ku+1,Wj,Nj)
+     call DTBSM('U','N','N',Nj,M,ku,Aj,kl+ku+1,Wj,Nj)
+
+     !Storing Wj top in reduced spike matrix
+     spk_cap_mat((2*(k-1)*m)-(M-1) : 2*(k-1)*M, 1+(k-2)*2*M : 1+(k-2)*2*M+(M-1)) = Vj(1:M, 1:M)
+     !Storing Wj bottom in reduced spike matrix
+     if(k<P) then
+       spk_cap_mat((2*(k-1)*M)+1 : (2*k-1)*M, 1+(k-2)*2*M : 1+(k-2)*2*M+(M-1)) = Vj(Nj-M+1:Nj, 1:M)
+     end if
+   end if
  enddo
 
- do k=2,P
-   Aj = ba(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj))
-   
-   do i = 1,Nj
-     do j = 1,M
-       spk_Cj(i,j) = A_mat((Nj*(k-1))+i, Nj*(k-1)-j+1)
-     enddo
-   enddo
-
-   nzero=0.0d0
-   norm=0.0d0
-   call DGBALU(Nj,kl,ku,Aj,kl+ku+1,nzero,norm,info)
-   print *,'info',info
-   
-   !LU SOlve
-   Wj=spk_Cj
-   call DTBSM('L','N','U',Nj,M,kl,Aj(ku+1,1),kl+ku+1,Wj,Nj)
-   call DTBSM('U','N','N',Nj,M,ku,Aj,kl+ku+1,Wj,Nj)
-
-   do i = 1,Nj
-     do j = 1,M
-       spk_mat((Nj*(k-1))+i, (Nj*(k-1))-j+1) = Wj(i,j)
-     enddo
-   enddo
-
+ do i = 1, s_cap_size
+   spk_cap_mat(i,i) = 1.0d0
  enddo
-
- do i = 1,N
-   spk_mat(i,i) = 1.0d0
- enddo
-
- !print *, "Spike Matrix is:", spk_mat
+ !! Spike Matrix is ready!!. Hopefully :p
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -360,6 +303,7 @@ enddo
  allocate(Gj(Nj))
  Gj = 0.0d0
  do k=1,P
+   !! This below step of LU factorization can be simplified by using existing LU factorized A matrix in ba_lu matrix
    Aj = ba(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj))
    
    nzero=0.0d0
@@ -377,6 +321,20 @@ enddo
  enddo
  !print *, "Final G is", G
 
+ !! Form G_cap
+ allocate(g_cap(s_cap_size))
+
+ do i = 1,P
+   !To store Gb
+   if(i<P) then
+     g_cap(1+(i-1)*2*M : (i-1)*2*M+M) = G((i*Nj)-M+1 : (i*Nj))
+   end if
+   !To store Gt
+   if(i>1) then
+     g_cap(m*((2*i)-3)+1 : 2*M*(k-1)) = G(((i-1)*Nj)+1 : ((i-1)*Nj+M))
+   end if
+ enddo
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!! Post-Processing stage:: S * X = G        !!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -385,66 +343,28 @@ enddo
 
   allocate(x(1:N)) !! solution
   x=0.0d0 ! initial starting vector
+  allocate(x_cap(1:s_cap_size)) !! solution
+  x_cap=0.0d0 ! initial starting vector
   allocate(ipiv(N))
-  !print *, "spike matrix is", spk_mat
-  call DGETRF(N,N,spk_mat,N,ipiv,info)
-  x=G
+  call DGETRF(s_cap_size,s_cap_size,spk_cap_mat,s_cap_size,ipiv,info)
+  x_cap=g_cap
   !print *, "G is", G
 
-  call DGETRS('N', N, 1, spk_mat, N, ipiv, x, N, info)
+  call DGETRS('N', s_cap_size, 1, spk_cap_mat, s_cap_size, ipiv, x_cap, s_cap_size, info)
   print *,'info',info
 
-  print *, "Final Solution is:",x
+  print *, "Final Solution is:",x_cap
 
-  r=b
-  call DGEMM('N', 'N', N, 1, N, 1.0d0, A_mat, N, x, N, -1.0d0, r, N)
-  print *, "Residual from maxval is", maxval(abs(r))/maxval(abs(b))
-  nres=sum(abs(r))/sum(abs(b)) ! norm relative residual 
-  print *, "Residual from nres is", nres
+  !r=b
+  !call DGEMM('N', 'N', N, 1, N, 1.0d0, A_mat, N, x, N, -1.0d0, r, N)
+  !print *, "Residual from maxval is", maxval(abs(r))/maxval(abs(b))
+  !nres=sum(abs(r))/sum(abs(b)) ! norm relative residual 
+  !print *, "Residual from nres is", nres
 
 end program spike_lu
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-!SUBROUTINE v_spike_gen(A,N,rD,cD,nj,rS,cS,M)
-!
-!  implicit none
-!  integer :: N,kl,ku
-!  double precision,dimension(N,N) :: A
-!  double precision:: norm,nzero
-!  integer :: info
-!
-!!!!!!!!!!!!!!!!!!!
-!  double precision,dimension(:,:),pointer :: Aj,Bj,spk_Bj
-!
-!  !allocate(Aj(nj,nj))
-!  !do i = 1,nj
-!  !  do j = 1,nj
-!  !    Aj(i,j) = A(rD-1+i, cD-1+j)
-!  !  enddo
-!  !enddo
-!  !
-!  !allocate(Bj(M,M))
-!  !do i = 1,M
-!  !  do j = 1,M
-!  !    Bj(i,j) = A(rS-1+i, cS-1+j)
-!  !  enddo
-!  !enddo
-!
-!  !allocate(spk_Bj(nj,m))
-!  !spk_Bj = 0.0d0
-!  !do i = nj-m+1,nj
-!  !  do j =1,M
-!  !    spk_Bj(i,j) = A(rS-1+i,cS-1+j)
-!  !  enddo
-!  !enddo
-!
-!
-!end SUBROUTINE v_spike_gen
-
-
-
 
 SUBROUTINE dcsrmm(UPLO,N,M,rhs,alpha,a,ia,ja,X,beta,B)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
