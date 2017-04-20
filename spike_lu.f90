@@ -36,7 +36,7 @@ program spike_lu
   integer :: P
   !! for banded solver
   !blk_diag - block diagonal matrix "D" after factorization in preconditioning phase
-  double precision,dimension(:,:),allocatable :: ba, ba_lu, A_mat, temp_banded_diag, blk_diag,Aj,spk_Bj, spk_Cj, Vj, Wj, spk_mat, spk_cap_mat
+  double precision,dimension(:,:),allocatable :: ba, ba_lu, temp_banded_diag, blk_diag,Aj,spk_Bj, spk_Cj, Vj, Wj, spk_mat, spk_cap_mat
   double precision :: nzero,norm
   integer :: kl,ku,info
   !!for pardiso
@@ -154,7 +154,7 @@ program spike_lu
      ref_x=b
      call DTBSM('L','N','U',N,1,kl,bA(ku+1,1),kl+ku+1,ref_x,N)
      call DTBSM('U','N','N',N,1,ku,bA,kl+ku+1,ref_x,N)
-     print *, "Reference Solution is:", ref_x
+     !print *, "Reference Solution is:", ref_x
 
      ! compute residual
      r=b
@@ -179,23 +179,6 @@ program spike_lu
         enddo
      enddo
 
-!! Recreating A matrix in 2D form to facilitate easy extraction of Bj and Cj - from software point of view
-   allocate(A_mat(N,N))
-   A_mat = 0.0d0
-   do i=1, (kl+ku+1)
-     if(i<=(ku+1)) then
-       do j=(ku+2-i), N
-         A_mat(j-ku+i-1,j) = ba(i,j)
-       enddo
-     end if
-     if(i>(ku+1)) then
-       do j=1,N-(i-ku-1)
-         A_mat(j-ku+i-1,j) = ba(i,j)
-       enddo
-     end if
-   enddo
-   !print *, "A matrix is:",A_mat
-
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!! Pre-processing stage:: partitioning phase!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -205,7 +188,7 @@ print *, "Order of each diagonal blocks - Aj: ", Nj  !! This needs to be put in 
 print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be put in variable still
 !and also this can change if bandwidth ku ad kl are equal
 
-
+print *, "Step -1 done"
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!! Pre-processing stage:: Factorization phase!!
@@ -235,6 +218,7 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
  spk_cap_mat = 0.0d0
  ba_lu = 0.0d0
  spk_Bj = 0.0d0
+print *, "Step -2 done"
 
  do k=1, P
  !!LU Factorization of A
@@ -276,14 +260,15 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
      call DTBSM('U','N','N',Nj,M,ku,Aj,kl+ku+1,Wj,Nj)
 
      !Storing Wj top in reduced spike matrix
-     spk_cap_mat((2*(k-1)*m)-(M-1) : 2*(k-1)*M, 1+(k-2)*2*M : 1+(k-2)*2*M+(M-1)) = Vj(1:M, 1:M)
+     spk_cap_mat((2*(k-1)*m)-(M-1) : 2*(k-1)*M, 1+(k-2)*2*M : 1+(k-2)*2*M+(M-1)) = Wj(1:M, 1:M)
      !Storing Wj bottom in reduced spike matrix
      if(k<P) then
-       spk_cap_mat((2*(k-1)*M)+1 : (2*k-1)*M, 1+(k-2)*2*M : 1+(k-2)*2*M+(M-1)) = Vj(Nj-M+1:Nj, 1:M)
+       spk_cap_mat((2*(k-1)*M)+1 : (2*k-1)*M, 1+(k-2)*2*M : 1+(k-2)*2*M+(M-1)) = Wj(Nj-M+1:Nj, 1:M)
      end if
    end if
  enddo
 
+  print *, "Step -3 done"
  do i = 1, s_cap_size
    spk_cap_mat(i,i) = 1.0d0
  enddo
@@ -331,7 +316,7 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
    end if
    !To store Gt
    if(i>1) then
-     g_cap(m*((2*i)-3)+1 : 2*M*(k-1)) = G(((i-1)*Nj)+1 : ((i-1)*Nj+M))
+     g_cap(m*((2*i)-3)+1 : 2*M*(i-1)) = G(((i-1)*Nj)+1 : ((i-1)*Nj+M))
    end if
  enddo
 
@@ -353,7 +338,7 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
   call DGETRS('N', s_cap_size, 1, spk_cap_mat, s_cap_size, ipiv, x_cap, s_cap_size, info)
   print *,'info',info
 
-  print *, "Final Solution is:",x_cap
+  !print *, "Final Solution is:",x_cap
 
   !r=b
   !call DGEMM('N', 'N', N, 1, N, 1.0d0, A_mat, N, x, N, -1.0d0, r, N)
