@@ -184,8 +184,6 @@ print *, "Order of each diagonal blocks - Aj: ", Nj  !! This needs to be put in 
 print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be put in variable still
 !and also this can change if bandwidth ku ad kl are equal
 
-print *, "Step -1 done"
-
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!! Pre-processing stage:: Factorization phase!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -209,7 +207,6 @@ print *, "Step -1 done"
  spk_cap_mat = 0.0d0
  ba_lu = 0.0d0
  spk_BjCj = 0.0d0
-print *, "Step -2 done"
 
  do k=1, P
  !!LU Factorization of A
@@ -259,7 +256,6 @@ print *, "Step -2 done"
    end if
  enddo
 
-  print *, "Step -3 done"
  do i = 1, s_cap_size
    spk_cap_mat(i,i) = 1.0d0
  enddo
@@ -279,13 +275,8 @@ print *, "Step -2 done"
  allocate(Gj(Nj))
  Gj = 0.0d0
  do k=1,P
-   !! This below step of LU factorization can be simplified by using existing LU factorized A matrix in ba_lu matrix
-   Aj = ba(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj))
-   
-   nzero=0.0d0
-   norm=0.0d0
-   call DGBALU(Nj,kl,ku,Aj,kl+ku+1,nzero,norm,info)
-   print *,'info',info
+   !!In the below step, using already existing LU factorized "A" Matrix
+   Aj = ba_lu(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj))
    
    !LU SOlve
    Gj = b(1+(k-1)*Nj:k*Nj)
