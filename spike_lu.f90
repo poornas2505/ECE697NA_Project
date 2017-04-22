@@ -35,7 +35,7 @@ program spike_lu
   character(len=1) :: proc, uplo
   integer :: P
   !! for banded solver
-  double precision,dimension(:,:),allocatable :: ba, ba_lu, Aj, spk_BjCj, spk_cap_mat
+  double precision,dimension(:,:),allocatable :: ba, ba_lu, Aj, spk_BjCj, spk_cap_mat, Bj, Cj
   double precision :: nzero,norm
   integer :: kl,ku,info
   !!for pardiso
@@ -150,7 +150,7 @@ program spike_lu
      ref_x=b
      call DTBSM('L','N','U',N,1,kl,bA(ku+1,1),kl+ku+1,ref_x,N)
      call DTBSM('U','N','N',N,1,ku,bA,kl+ku+1,ref_x,N)
-     !print *, "Reference Solution is:", ref_x
+     print *, "Reference Solution is:", ref_x
 
      ! compute residual
      r=b
@@ -201,27 +201,36 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
  norm=0.0d0
  allocate(Aj(kl+ku+1,Nj))
  allocate(spk_BjCj(Nj,M))
+ allocate(Bj(M,M))
+ allocate(Cj(M,M))
  allocate(spk_cap_mat(s_cap_size, s_cap_size))
  allocate(ba_lu(1:kl+ku+1,1:N))
  
  spk_cap_mat = 0.0d0
  ba_lu = 0.0d0
  spk_BjCj = 0.0d0
+ Bj = 0.0d0
+ Cj = 0.0d0
 
  do k=1, P
  !!LU Factorization of A
    Aj = ba(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj))
    nzero=0.0d0
    norm=0.0d0
+   print *, "K is",k
    call DGBALU(Nj,kl,ku,Aj,kl+ku+1,nzero,norm,info)
+
    print *,'info',info
    ba_lu(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj)) = Aj
 
    !!Fetching Bj from next partition - spk_BjCj is acting as spk_Bj here
    if(k<P) then
      spk_BjCj = 0.0d0
-     call DLACPY('L', ku, ku, ba(1:kl+ku+1,(1+(k)*Nj):((k+1)*Nj)), kl+ku, spk_BjCj(Nj-M+1: Nj, 1:M), ku) !! When in doubt, check this :p
-     !print *, "Spk Bj is", spk_BjCj
+     Bj = 0.0d0
+     !call DLACPY('L', ku, ku, ba(1,(1+(k)*Nj)), kl+ku, Bj, ku) !! When in doubt, check this :p
+     call DLACPY('L', ku, ku, ba(1,(1+(k)*Nj)), kl+ku, spk_BjCj(Nj-M+1:Nj, 1:M), ku) !! When in doubt, check this :p
+    ! print *, "Spk Bj is", spk_BjCj
+     !print *, "Bj is", Bj
 
      !LU SOlve
      call DTBSM('L','N','U',Nj,M,kl,Aj(ku+1,1),kl+ku+1,spk_BjCj,Nj)
@@ -240,8 +249,10 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
      spk_BjCj = 0.0d0
      Aj = ba_lu(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj)) !Current partitiion Aj
      !print *, "Aj is", Aj
-     call DLACPY('U', kl, kl+ku, ba(1:kl+ku+1,(1+(k-2)*Nj):((k-1)*Nj)), kl+ku, spk_BjCj(1:M, 1:M), kl) !! When in doubt, check this :p
-     !print *, "Spk Cj is", spk_BjCj
+     !call DLACPY('U', kl, kl, ba(ku+1 : kl+ku+1,(1+(k-2)*Nj+Nj-kl):((k-1)*Nj)), kl+ku, Cj, kl) !! When in doubt, check this :p
+     !call DLACPY('U', kl, kl, ba(kl+ku+1,(1+(k-2)*Nj+Nj-kl)), kl+ku, Cj, kl) !! When in doubt, check this :p
+     call DLACPY('U', kl, kl, ba(kl+ku+1,(1+(k-2)*Nj+Nj-kl)), kl+ku, spk_BjCj(1:M, 1:M), ku) !! When in doubt, check this :p
+     !print *, "Cj is", spk_BjCj
 
      !LU SOlve - Wj is nothing spk_BjCj here
      call DTBSM('L','N','U',Nj,M,kl,Aj(ku+1,1),kl+ku+1,spk_BjCj,Nj)
@@ -277,14 +288,15 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
  do k=1,P
    !!In the below step, using already existing LU factorized "A" Matrix
    Aj = ba_lu(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj))
-   
    !LU SOlve
    Gj = b(1+(k-1)*Nj:k*Nj)
+   !print *, "Gj is", Gj
    call DTBSM('L','N','U',Nj,1,kl,Aj(ku+1,1),kl+ku+1,Gj,Nj)
+   !print *, "Gj is", Gj
    call DTBSM('U','N','N',Nj,1,ku,Aj,kl+ku+1,Gj,Nj)
+   !print *, "Gj is", Gj
    G(1+(k-1)*Nj:k*Nj) = Gj
 
-  !print *, "Gj is", Gj
  enddo
  !print *, "Final G is", G
 
@@ -320,7 +332,7 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
   call DGETRS('N', s_cap_size, 1, spk_cap_mat, s_cap_size, ipiv, x_cap, s_cap_size, info)
   print *,'info',info
 
-  !print *, "Final Solution is:",x_cap
+  print *, "Final Solution is:",x_cap
 
   !r=b
   !call DGEMM('N', 'N', N, 1, N, 1.0d0, A_mat, N, x, N, -1.0d0, r, N)
