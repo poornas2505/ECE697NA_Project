@@ -35,7 +35,7 @@ program spike_lu
   character(len=1) :: proc, uplo
   integer :: P
   !! for banded solver
-  double precision,dimension(:,:),allocatable :: ba, ba_lu, Aj, spk_BjCj, spk_cap_mat, Bj, Cj
+  double precision,dimension(:,:),allocatable :: ba, ba_lu, Aj, spk_cap_mat, Bj, Cj, Vj_mat, Wj_mat
   double precision :: nzero,norm
   integer :: kl,ku,info
   !!for pardiso
@@ -200,17 +200,19 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
  nzero=0.0d0
  norm=0.0d0
  allocate(Aj(kl+ku+1,Nj))
- allocate(spk_BjCj(Nj,M))
  allocate(Bj(M,M))
  allocate(Cj(M,M))
  allocate(spk_cap_mat(s_cap_size, s_cap_size))
  allocate(ba_lu(1:kl+ku+1,1:N))
+ allocate(Vj_mat(Nj, P*M))
+ allocate(Wj_mat(Nj, P*M))
  
  spk_cap_mat = 0.0d0
  ba_lu = 0.0d0
- spk_BjCj = 0.0d0
  Bj = 0.0d0
  Cj = 0.0d0
+ Vj_mat = 0.0d0
+ Wj_mat = 0.0d0
 
  do k=1, P
  !!LU Factorization of A
@@ -223,46 +225,40 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
    print *,'info',info
    ba_lu(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj)) = Aj
 
-   !!Fetching Bj from next partition - spk_BjCj is acting as spk_Bj here
+   !!Fetching Bj from next partition
    if(k<P) then
-     spk_BjCj = 0.0d0
      Bj = 0.0d0
-     !call DLACPY('L', ku, ku, ba(1,(1+(k)*Nj)), kl+ku, Bj, ku) !! When in doubt, check this :p
-     call DLACPY('L', ku, ku, ba(1,(1+(k)*Nj)), kl+ku, spk_BjCj(Nj-M+1:Nj, 1:M), ku) !! When in doubt, check this :p
-    ! print *, "Spk Bj is", spk_BjCj
+     call DLACPY('L', ku, ku, ba(1,(1+(k)*Nj)), kl+ku, Bj, ku) !! When in doubt, check this :p
      !print *, "Bj is", Bj
+     Vj_mat(Nj-M+1:Nj,1+((k-1)*M):k*M) = Bj
 
      !LU SOlve
-     call DTBSM('L','N','U',Nj,M,kl,Aj(ku+1,1),kl+ku+1,spk_BjCj,Nj)
-     call DTBSM('U','N','N',Nj,M,ku,Aj,kl+ku+1,spk_BjCj,Nj)
+     call DTBSM('L','N','U',Nj,M,kl,Aj(ku+1,1),kl+ku+1,Vj_mat(:,1+((k-1)*M):k*M),Nj)
+     call DTBSM('U','N','N',Nj,M,ku,Aj,kl+ku+1,Vj_mat(:,1+((k-1)*M):k*M),Nj)
 
-     !Storing Vj bottom in reduced spike matrix - spk_BjCj is Vj now
-     spk_cap_mat(1+(k-1)*2*M : 1+(k-1)*2*M+(M-1), (2*k*M)-(M-1) : 2*k*M) = spk_BjCj(Nj-M+1:Nj, 1:M)
-     !Storing Vj top in reduced spike matrix - spk_BjCj is Vj now
+     !Storing Vj bottom in reduced spike matrix
+     spk_cap_mat(1+(k-1)*2*M : 1+(k-1)*2*M+(M-1), (2*k*M)-(M-1) : 2*k*M) = Vj_mat(Nj-M+1:Nj, 1+((k-1)*M):k*M)
+     !Storing Vj top in reduced spike matrix
      if(k>1) then
-       spk_cap_mat((2*k-3)*M+1 : (2*k-2)*M, (2*k*M)-(M-1) : 2*k*M) = spk_BjCj(1:M, 1:M)
+       spk_cap_mat((2*k-3)*M+1 : (2*k-2)*M, (2*k*M)-(M-1) : 2*k*M) = Vj_mat(1:M, 1+((k-1)*M):k*M)
      end if
    end if
 
-   !!Fetching Cj from previous partition - spk_BjCj is acting as spk_Cj here
+   !!Fetching Cj from previous partition
    if(k>1) then
-     spk_BjCj = 0.0d0
      Aj = ba_lu(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj)) !Current partitiion Aj
      !print *, "Aj is", Aj
-     !call DLACPY('U', kl, kl, ba(ku+1 : kl+ku+1,(1+(k-2)*Nj+Nj-kl):((k-1)*Nj)), kl+ku, Cj, kl) !! When in doubt, check this :p
-     !call DLACPY('U', kl, kl, ba(kl+ku+1,(1+(k-2)*Nj+Nj-kl)), kl+ku, Cj, kl) !! When in doubt, check this :p
-     call DLACPY('U', kl, kl, ba(kl+ku+1,(1+(k-2)*Nj+Nj-kl)), kl+ku, spk_BjCj(1:M, 1:M), ku) !! When in doubt, check this :p
-     !print *, "Cj is", spk_BjCj
+     call DLACPY('U', kl, kl, ba(kl+ku+1,(1+(k-2)*Nj+Nj-kl)), kl+ku, Cj, ku) !! When in doubt, check this :p
+     Wj_mat(1:M, 1+((k-1)*M):k*M) = Cj
+     !LU SOlve
+     call DTBSM('L','N','U',Nj,M,kl,Aj(ku+1,1),kl+ku+1,Wj_mat(:,1+((k-1)*M):k*M),Nj)
+     call DTBSM('U','N','N',Nj,M,ku,Aj,kl+ku+1,Wj_mat(:,1+((k-1)*M):k*M),Nj)
 
-     !LU SOlve - Wj is nothing spk_BjCj here
-     call DTBSM('L','N','U',Nj,M,kl,Aj(ku+1,1),kl+ku+1,spk_BjCj,Nj)
-     call DTBSM('U','N','N',Nj,M,ku,Aj,kl+ku+1,spk_BjCj,Nj)
-
-     !Storing Wj top in reduced spike matrix - spk_BjCj is Wj now
-     spk_cap_mat((2*(k-1)*m)-(M-1) : 2*(k-1)*M, 1+(k-2)*2*M : 1+(k-2)*2*M+(M-1)) = spk_BjCj(1:M, 1:M)
-     !Storing Wj bottom in reduced spike matrix - spk_BjCj is Wj now
+     !Storing Wj top in reduced spike matrix
+     spk_cap_mat((2*(k-1)*m)-(M-1) : 2*(k-1)*M, 1+(k-2)*2*M : 1+(k-2)*2*M+(M-1)) = Wj_mat(1:M, 1+((k-1)*M):k*M)
+     !Storing Wj bottom in reduced spike matrix
      if(k<P) then
-       spk_cap_mat((2*(k-1)*M)+1 : (2*k-1)*M, 1+(k-2)*2*M : 1+(k-2)*2*M+(M-1)) = spk_BjCj(Nj-M+1:Nj, 1:M)
+       spk_cap_mat((2*(k-1)*M)+1 : (2*k-1)*M, 1+(k-2)*2*M : 1+(k-2)*2*M+(M-1)) = Wj_mat(Nj-M+1:Nj, 1+((k-1)*M):k*M)
      end if
    end if
  enddo
