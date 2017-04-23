@@ -28,14 +28,14 @@ program spike_lu
   implicit none
   integer :: i,j,N,k,Nx,Ny,e,nnz,rS,cS, Nj,M, s_cap_size
   integer :: t1,t2,tim
-  double precision :: L,nres,err
+  double precision :: L,nres,err, error
   double precision,dimension(:),allocatable :: sa,b,r,ref_x,x,G,Gj, g_cap,x_cap
   integer,dimension(:),allocatable :: isa,jsa,ipiv
   character(len=100) :: name
   character(len=1) :: proc, uplo
   integer :: P
   !! for banded solver
-  double precision,dimension(:,:),allocatable :: ba, ba_lu, Aj, spk_cap_mat, Bj, Cj, Vj_mat, Wj_mat
+  double precision,dimension(:,:),allocatable :: ba, ba_lu, Aj, spk_cap_mat, Bj, Cj, Vj_mat, Wj_mat, Vj, Wj
   double precision :: nzero,norm
   integer :: kl,ku,info
   !!for pardiso
@@ -150,7 +150,7 @@ program spike_lu
      ref_x=b
      call DTBSM('L','N','U',N,1,kl,bA(ku+1,1),kl+ku+1,ref_x,N)
      call DTBSM('U','N','N',N,1,ku,bA,kl+ku+1,ref_x,N)
-     print *, "Reference Solution is:", ref_x
+     !print *, "Reference Solution is:", ref_x
 
      ! compute residual
      r=b
@@ -328,13 +328,59 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
   call DGETRS('N', s_cap_size, 1, spk_cap_mat, s_cap_size, ipiv, x_cap, s_cap_size, info)
   print *,'info',info
 
-  print *, "Final Solution is:",x_cap
+  !print *, "Intermediate Solution is:",x_cap 
 
-  !r=b
-  !call DGEMM('N', 'N', N, 1, N, 1.0d0, A_mat, N, x, N, -1.0d0, r, N)
-  !print *, "Residual from maxval is", maxval(abs(r))/maxval(abs(b))
-  !nres=sum(abs(r))/sum(abs(b)) ! norm relative residual 
-  !print *, "Residual from nres is", nres
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!! Post-Processing stage:: Reconstruction of X !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ allocate(Vj(Nj, M))
+ allocate(Wj(Nj, M))
+ Vj = 0.0d0
+ Wj = 0.0d0
+  do k=1,P
+    print *, "K in final is", k
+    x(1+(k-1)*Nj:k*Nj) = g(1+(k-1)*Nj:k*Nj)
+    Vj = Vj_mat(1:Nj, 1+(k-1)*M:k*M)
+    Wj = Wj_mat(1:Nj, 1+(k-1)*M:k*M)
+    print *, "First yes"
+    if (k /= P) then
+      print *, "Status", N, Nj,M, 1+(k-1)*M, k*M, (((2*k)-1)*M)+1, 2*k*M, 1+(k-1)*Nj, k*Nj
+      call DGEMM("N", "N", Nj, M, M, -1.0d0, Vj, Nj, x_cap((((2*k)-1)*M)+1:2*K*M), M, 1.0d0, x(1+(k-1)*Nj:k*Nj), Nj) !TODO: Check if LDA, LDB and LDC for parameters are correct
+    end if
+    print *, "Second yes"
+    if (k /= 1) then
+      call DGEMM("N", "N", Nj, M, M, -1.0d0, Wj, Nj, x_cap(1+2*(k-2)*M:((2*K)-3)*M), M, 1.0d0, x(1+(k-1)*Nj:k*Nj), Nj) !TODO: Check if LDA, LDB and LDC for parameters are correct
+    end if
+    print *, "third yes"
+    Vj = 0.0d0
+    Wj = 0.0d0
+    if (k == 2) then
+      print *, "x1_top is", x_cap(1+2*(k-2)*M:((2*k)-3)*M)
+      print *, "ref_x is", ref_x(Nj-M+1:Nj)
+    end if
+  enddo
+  !print *, "Final Solution X is", x
+  ! compute residual
+  print *, "First 100 X are"
+  print *, "Final solution is", x(1:100)
+  print *, "Ref solution is", ref_x(1:100)
+  error = 0.0d0
+  do i = 1, N
+    error = error + (x(i)-ref_x(i))
+  enddo
+  
+  do i = 70000, 80000
+    if(abs(x(i)-ref_x(i)) > 0.0001) then
+      print *, "At i", i, (x(i)-ref_x(i)), x(i), ref_x(i)
+    end if
+  enddo
+
+  print *, "Final Error is", error
+  r=b
+  call dcsrmm(uplo,N,N,1,-1.0d0,sa,isa,jsa,x,1.0d0,r)
+  nres=sum(abs(r))/sum(abs(b)) ! norm relative residual 
+  print *, "Residual from nres is", nres
 
 end program spike_lu
 
