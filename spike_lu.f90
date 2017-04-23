@@ -175,6 +175,9 @@ program spike_lu
         enddo
      enddo
 
+!! Timer Starts
+  call system_clock(t1,tim) ! initialize time
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!! Pre-processing stage:: partitioning phase!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -358,6 +361,12 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
   call dcsrmm(uplo,N,N,1,-1.0d0,sa,isa,jsa,x,1.0d0,r)
   nres=sum(abs(r))/sum(abs(b)) ! norm relative residual 
   print *, "Residual from nres is", nres
+
+!! Timer ends
+  call system_clock(t2,tim) ! final time
+  print *,'Total time',(t2-t1)*1.0d0/tim
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 end program spike_lu
 
