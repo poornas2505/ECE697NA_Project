@@ -29,7 +29,7 @@ program spike_lu
   integer :: i,j,N,k,Nx,Ny,e,nnz,rS,cS, Nj,M, s_cap_size
   integer :: t1,t2,tim
   double precision :: L,nres,err, error
-  double precision,dimension(:),allocatable :: sa,b,r,ref_x,x,G,Gj, g_cap,x_cap
+  double precision,dimension(:),allocatable :: sa,b,r,ref_x,x,G,Gj, g_cap,x_cap, x_top
   integer,dimension(:),allocatable :: isa,jsa,ipiv
   character(len=100) :: name
   character(len=1) :: proc, uplo
@@ -219,7 +219,6 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
    Aj = ba(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj))
    nzero=0.0d0
    norm=0.0d0
-   print *, "K is",k
    call DGBALU(Nj,kl,ku,Aj,kl+ku+1,nzero,norm,info)
 
    print *,'info',info
@@ -336,47 +335,25 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
  allocate(Vj(Nj, M))
  allocate(Wj(Nj, M))
+ allocate(x_top(M))
  Vj = 0.0d0
  Wj = 0.0d0
+ x_top = 0.0d0
   do k=1,P
-    print *, "K in final is", k
-    x(1+(k-1)*Nj:k*Nj) = g(1+(k-1)*Nj:k*Nj)
-    Vj = Vj_mat(1:Nj, 1+(k-1)*M:k*M)
-    Wj = Wj_mat(1:Nj, 1+(k-1)*M:k*M)
-    print *, "First yes"
+    x(1+(k-1)*Nj:k*Nj) = g(1+((k-1)*Nj):k*Nj)
+    Vj = Vj_mat(1:Nj, 1+((k-1)*M):k*M)
+    Wj = Wj_mat(1:Nj, 1+((k-1)*M):k*M)
+    x_top = x_cap((((2*k)-1)*M)+1:2*k*M)
     if (k /= P) then
-      print *, "Status", N, Nj,M, 1+(k-1)*M, k*M, (((2*k)-1)*M)+1, 2*k*M, 1+(k-1)*Nj, k*Nj
-      call DGEMM("N", "N", Nj, M, M, -1.0d0, Vj, Nj, x_cap((((2*k)-1)*M)+1:2*K*M), M, 1.0d0, x(1+(k-1)*Nj:k*Nj), Nj) !TODO: Check if LDA, LDB and LDC for parameters are correct
+      call DGEMM("N", "N", Nj, 1, M, -1.0d0, Vj, Nj, x_top, M, 1.0d0, x(1+(k-1)*Nj:k*Nj), Nj) !TODO: Check if LDA, LDB and LDC for parameters are correct
     end if
-    print *, "Second yes"
     if (k /= 1) then
-      call DGEMM("N", "N", Nj, M, M, -1.0d0, Wj, Nj, x_cap(1+2*(k-2)*M:((2*K)-3)*M), M, 1.0d0, x(1+(k-1)*Nj:k*Nj), Nj) !TODO: Check if LDA, LDB and LDC for parameters are correct
+      call DGEMM("N", "N", Nj, 1, M, -1.0d0, Wj, Nj, x_cap(1+2*(k-2)*M:((2*K)-3)*M), M, 1.0d0, x(1+(k-1)*Nj:k*Nj), Nj) !TODO: Check if LDA, LDB and LDC for parameters are correct
     end if
-    print *, "third yes"
     Vj = 0.0d0
     Wj = 0.0d0
-    if (k == 2) then
-      print *, "x1_top is", x_cap(1+2*(k-2)*M:((2*k)-3)*M)
-      print *, "ref_x is", ref_x(Nj-M+1:Nj)
-    end if
-  enddo
-  !print *, "Final Solution X is", x
-  ! compute residual
-  print *, "First 100 X are"
-  print *, "Final solution is", x(1:100)
-  print *, "Ref solution is", ref_x(1:100)
-  error = 0.0d0
-  do i = 1, N
-    error = error + (x(i)-ref_x(i))
-  enddo
-  
-  do i = 70000, 80000
-    if(abs(x(i)-ref_x(i)) > 0.0001) then
-      print *, "At i", i, (x(i)-ref_x(i)), x(i), ref_x(i)
-    end if
   enddo
 
-  print *, "Final Error is", error
   r=b
   call dcsrmm(uplo,N,N,1,-1.0d0,sa,isa,jsa,x,1.0d0,r)
   nres=sum(abs(r))/sum(abs(b)) ! norm relative residual 
