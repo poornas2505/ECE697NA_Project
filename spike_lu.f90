@@ -346,8 +346,10 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
     x(1+(k-1)*Nj:k*Nj) = g(1+((k-1)*Nj):k*Nj)
     Vj = Vj_mat(1:Nj, 1+((k-1)*M):k*M)
     Wj = Wj_mat(1:Nj, 1+((k-1)*M):k*M)
-    x_top = x_cap((((2*k)-1)*M)+1:2*k*M)
+    print *, "K is", k
+    print *,"Subs 1 is ",(((2*k)-1)*M)+1
     if (k /= P) then
+      x_top = x_cap((((2*k)-1)*M)+1:2*k*M)
       call DGEMM("N", "N", Nj, 1, M, -1.0d0, Vj, Nj, x_top, M, 1.0d0, x(1+(k-1)*Nj:k*Nj), Nj) !TODO: Check if LDA, LDB and LDC for parameters are correct
     end if
     if (k /= 1) then
