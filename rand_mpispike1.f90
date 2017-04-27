@@ -196,8 +196,6 @@ M = (kl+ku+1-1)/2
 ! No need to generate Spike Matrix S as it is not needed
 
 
-!! Timer Starts
-  call system_clock(t1,tim) ! initialize time
  
  s_cap_size = 2*(P-1)*M;
 allocate(spk_cap_mat(s_cap_size, s_cap_size))
@@ -236,6 +234,8 @@ end if
 
 !print *,"Rank =",rank," Everyone has their own Aj, so they calculate wrong Bj,Cj"
 
+!! Timer Starts
+  call system_clock(t1,tim) ! initialize time
 k=rank+1
 nzero=0.0d0
 norm=0.0d0
@@ -317,18 +317,18 @@ end if
 !print *,"Before calling All_reduce"
 allocate(spk_temp(s_cap_size,s_cap_size))
 spk_temp=0.0d0
-!call MPI_ALLREDUCE(spk_cap_mat,spk_temp,s_cap_size*s_cap_size,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD)
+call MPI_ALLREDUCE(MPI_IN_PLACE,spk_cap_mat,s_cap_size*s_cap_size,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD, ierr)
 
-do i=1,P-1
-  if(rank==i)then
-    call MPI_SEND(spk_cap_mat,s_cap_size*s_cap_size,MPI_DOUBLE_PRECISION,0,tag,MPI_COMM_WORLD,ierr)
-  endif
-  if(rank==0) then  
-    call MPI_RECV(spk_temp,s_cap_size*s_cap_size,MPI_DOUBLE_PRECISION,i,tag,MPI_COMM_WORLD,status,ierr)
-    spk_cap_mat=spk_cap_mat + spk_temp
-    print *,"Recieved from ",i
-  endif
-enddo
+!do i=1,P-1
+!  if(rank==i)then
+!    call MPI_SEND(spk_cap_mat,s_cap_size*s_cap_size,MPI_DOUBLE_PRECISION,0,tag,MPI_COMM_WORLD,ierr)
+!  endif
+!  if(rank==0) then  
+!    call MPI_RECV(spk_temp,s_cap_size*s_cap_size,MPI_DOUBLE_PRECISION,i,tag,MPI_COMM_WORLD,status,ierr)
+!    spk_cap_mat=spk_cap_mat + spk_temp
+!    print *,"Recieved from ",i
+!  endif
+!enddo
 
 !print *,"Everyone should have full spk_cap_mat"
 
