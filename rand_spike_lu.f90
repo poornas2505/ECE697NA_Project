@@ -27,7 +27,7 @@ program spike_lu
 !!!!!!! variable declaration
   implicit none
   integer :: i,j,N,k,Nx,Ny,e,nnz,rS,cS, Nj,M, s_cap_size
-  integer :: t1,t2,t3,t4,tim, cumul_time
+  integer :: t1,t2,t3,t4,t5,t6,tim, cumul_time
   double precision :: L,nres,err, error
   double precision,dimension(:),allocatable :: sa,b,r,ref_x,x,G,Gj, g_cap,x_cap, x_top, ba_r, iseed
   integer,dimension(:),allocatable :: isa,jsa,ipiv
@@ -178,13 +178,15 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
    call system_clock(t3,tim) ! initialize time
    Aj = ba(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj))
    call system_clock(t4,tim) ! initialize time
-   cumul_time = cumul_time + (t4-t3)
    nzero=0.0d0
    norm=0.0d0
    call DGBALU(Nj,kl,ku,Aj,kl+ku+1,nzero,norm,info)
 
    print *,'info',info
+   call system_clock(t5,tim)
    ba_lu(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj)) = Aj
+   call system_clock(t6,tim)
+   cumul_time = cumul_time + (t4-t3) + (t6-t5)
 
    !!Fetching Bj from next partition
    if(k<P) then
