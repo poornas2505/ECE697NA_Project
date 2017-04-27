@@ -27,7 +27,7 @@ program spike_lu
 !!!!!!! variable declaration
   implicit none
   integer :: i,j,N,k,Nx,Ny,e,nnz,rS,cS, Nj,M, s_cap_size
-  integer :: t1,t2,tim
+  integer :: t1,t2,t3,t4,tim, cumul_time
   double precision :: L,nres,err, error
   double precision,dimension(:),allocatable :: sa,b,r,ref_x,x,G,Gj, g_cap,x_cap, x_top, ba_r, iseed
   integer,dimension(:),allocatable :: isa,jsa,ipiv
@@ -105,7 +105,7 @@ program spike_lu
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
      call system_clock(t1,tim) ! initialize time
-!!! Solve Ax=b
+     !!! Solve Ax=b
 
      ! LU factorization
      nzero=0.0d0
@@ -119,7 +119,7 @@ program spike_lu
      call DTBSM('U','N','N',N,1,ku,bA,kl+ku+1,ref_x,N)
      !print *, "Reference Solution is:", ref_x
 
-  call system_clock(t2,tim) ! final time
+     call system_clock(t2,tim) ! final time
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -170,10 +170,15 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
  Cj = 0.0d0
  Vj_mat = 0.0d0
  Wj_mat = 0.0d0
+ cumul_time = 0.0d0
 
  do k=1, P
  !!LU Factorization of A
+
+   call system_clock(t3,tim) ! initialize time
    Aj = ba(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj))
+   call system_clock(t4,tim) ! initialize time
+   cumul_time = cumul_time + (t4-t3)
    nzero=0.0d0
    norm=0.0d0
    call DGBALU(Nj,kl,ku,Aj,kl+ku+1,nzero,norm,info)
@@ -315,7 +320,7 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
 
 !! Timer ends
   call system_clock(t2,tim) ! final time
-  print *,'Total time',(t2-t1)*1.0d0/tim
+  print *,'Total time',(t2-t1-cumul_time)*1.0d0/tim
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
