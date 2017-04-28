@@ -27,7 +27,7 @@ program spike_lu
 !!!!!!! variable declaration
   implicit none
   integer :: i,j,N,k,Nx,Ny,e,nnz,rS,cS, Nj,M, s_cap_size
-  integer :: t1,t2,t3,t4,t5,t6,tim, cumul_time
+  integer :: t1,t2,t3,t4,t5,t6,t7,t8,t9,t10,tim, cumul_time
   double precision :: L,nres,err, error
   double precision,dimension(:),allocatable :: sa,b,r,ref_x,x,G,Gj, g_cap,x_cap, x_top, ba_r, iseed
   integer,dimension(:),allocatable :: isa,jsa,ipiv
@@ -209,7 +209,10 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
 
    !!Fetching Cj from previous partition
    if(k>1) then
+     call system_clock(t7,tim)
      Aj = ba_lu(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj)) !Current partitiion Aj
+     call system_clock(t8,tim)
+     cumul_time = cumul_time + (t8-t7)
      !print *, "Aj is", Aj
      call DLACPY('U', kl, kl, ba(kl+ku+1,(1+(k-2)*Nj+Nj-kl)), kl+ku, Cj, ku) !! When in doubt, check this :p
      Wj_mat(1:M, 1+((k-1)*M):k*M) = Cj
@@ -246,7 +249,10 @@ print *, "Order of each sub diagonal blocks - Bj, Cj: ", M  !! This needs to be 
  Gj = 0.0d0
  do k=1,P
    !!In the below step, using already existing LU factorized "A" Matrix
+   call system_clock(t9,tim)
    Aj = ba_lu(1:kl+ku+1,(1+(k-1)*Nj):(k*Nj))
+   call system_clock(t10,tim)
+   cumul_time = cumul_time + (t10-t9)
    !LU SOlve
    Gj = b(1+(k-1)*Nj:k*Nj)
    !print *, "Gj is", Gj
